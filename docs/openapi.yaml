@@ -1,0 +1,1085 @@
+openapi: 3.1.0
+info:
+  title: Food Order Platform API
+  version: 1.0.0
+  description: >-
+    JSON API for the single-restaurant Food Order Platform. Monetary values are
+    returned as decimal strings. Customer order ownership and staff permissions
+    are enforced by the backend.
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local development server
+tags:
+  - name: Health
+  - name: Authentication
+  - name: Users
+  - name: Foods
+  - name: Customer orders
+  - name: Staff orders
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Check API health
+      responses:
+        '200':
+          description: API is responding.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status: { const: ok }
+              example: { success: true, data: { status: ok } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Sign in an active staff or customer account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example: { email: admin@example.com, password: LocalOnly@123! }
+      responses:
+        '200':
+          description: Bearer token and safe identity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [token, tokenType, expiresIn, user]
+                    properties:
+                      token: { type: string }
+                      tokenType: { const: Bearer }
+                      expiresIn: { type: string, example: 1h }
+                      user: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                data:
+                  token: <bearer-token>
+                  tokenType: Bearer
+                  expiresIn: 1h
+                  user:
+                    id: seed-admin
+                    name: Local Administrator
+                    email: admin@example.com
+                    role: ADMIN
+                    active: true
+                    createdAt: '2026-10-04T10:00:00.000Z'
+                    updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Credentials are invalid or the account is inactive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { success: false, error: { code: INVALID_CREDENTIALS, message: 'Email or password is incorrect.' } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentIdentity
+      summary: Get the current authenticated identity
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current safe user identity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                data:
+                  id: seed-admin
+                  name: Local Administrator
+                  email: admin@example.com
+                  role: ADMIN
+                  active: true
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /users:
+    get:
+      tags: [Users]
+      operationId: listStaffUsers
+      summary: List administrator and operator accounts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Safe staff-user list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                data:
+                  - id: seed-admin
+                    name: Local Administrator
+                    email: admin@example.com
+                    role: ADMIN
+                    active: true
+                    createdAt: '2026-10-04T10:00:00.000Z'
+                    updatedAt: '2026-10-04T10:00:00.000Z'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      operationId: createStaffUser
+      summary: Create an administrator or operator account
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+            example:
+              name: New Operator
+              email: operator2@example.com
+              password: LocalTestingPassword!23
+              role: OPERATOR
+              active: true
+      responses:
+        '201':
+          description: Created safe user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                data:
+                  id: cnewstaff123
+                  name: New Operator
+                  email: operator2@example.com
+                  role: OPERATOR
+                  active: true
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Users]
+      operationId: getStaffUser
+      summary: Get a staff user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Safe staff-user detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                data:
+                  id: seed-operator
+                  name: Local Operator
+                  email: operator@example.com
+                  role: OPERATOR
+                  active: true
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      operationId: updateStaffUser
+      summary: Update name, role, or active state
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+            example: { name: Updated Operator, active: true }
+      responses:
+        '200':
+          description: Updated safe user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                data:
+                  id: seed-operator
+                  name: Updated Operator
+                  email: operator@example.com
+                  role: OPERATOR
+                  active: true
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /foods:
+    get:
+      tags: [Foods]
+      operationId: listFoodsForStaff
+      summary: List all foods for staff management
+      description: Includes unavailable and archived foods.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Staff food list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  - id: seed-food-paneer
+                    name: Paneer Tikka
+                    description: Char-grilled paneer with house spices.
+                    category: Starters
+                    price: '240.00'
+                    availability: true
+                    archived: false
+                    createdAt: '2026-10-04T10:00:00.000Z'
+                    updatedAt: '2026-10-04T10:00:00.000Z'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Foods]
+      operationId: createFood
+      summary: Create a food
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFoodRequest' }
+            example:
+              name: Margherita Pizza
+              description: Tomato and mozzarella
+              category: Pizza
+              price: '249.00'
+              availability: true
+      responses:
+        '201':
+          description: Created food.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  id: cfood123
+                  name: Margherita Pizza
+                  description: Tomato and mozzarella
+                  category: Pizza
+                  price: '249.00'
+                  availability: true
+                  archived: false
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /foods/available:
+    get:
+      tags: [Foods]
+      operationId: listAvailableFoods
+      summary: List customer-orderable foods
+      description: Returns only available and non-archived foods, with management fields omitted.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Customer-safe available food list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CustomerFood' }
+              example:
+                success: true
+                data:
+                  - id: seed-food-paneer
+                    name: Paneer Tikka
+                    description: Char-grilled paneer with house spices.
+                    category: Starters
+                    price: '240.00'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /foods/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Foods]
+      operationId: getFood
+      summary: Get staff food detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Staff food detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  id: seed-food-paneer
+                  name: Paneer Tikka
+                  description: Char-grilled paneer with house spices.
+                  category: Starters
+                  price: '240.00'
+                  availability: true
+                  archived: false
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Foods]
+      operationId: updateFood
+      summary: Update supported food fields
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateFoodRequest' }
+            example: { price: '259.95', availability: true }
+      responses:
+        '200':
+          description: Updated food.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  id: seed-food-paneer
+                  name: Paneer Tikka
+                  description: Char-grilled paneer with house spices.
+                  category: Starters
+                  price: '259.95'
+                  availability: true
+                  archived: false
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [Foods]
+      operationId: archiveFoodWithDelete
+      summary: Soft archive a food (DELETE alias)
+      description: Sets archived to true; this route never physically deletes a food.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Archived food.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  id: seed-food-paneer
+                  name: Paneer Tikka
+                  description: Char-grilled paneer with house spices.
+                  category: Starters
+                  price: '240.00'
+                  availability: true
+                  archived: true
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /foods/{id}/availability:
+    patch:
+      tags: [Foods]
+      operationId: setFoodAvailability
+      summary: Set a food's availability
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AvailabilityRequest' }
+            example: { availability: false }
+      responses:
+        '200':
+          description: Updated food availability.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  id: seed-food-paneer
+                  name: Paneer Tikka
+                  description: Char-grilled paneer with house spices.
+                  category: Starters
+                  price: '240.00'
+                  availability: false
+                  archived: false
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /foods/{id}/archive:
+    patch:
+      tags: [Foods]
+      operationId: archiveFood
+      summary: Soft archive a food
+      description: Sets archived to true and retains the database row.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Archived food.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/Food' }
+              example:
+                success: true
+                data:
+                  id: seed-food-paneer
+                  name: Paneer Tikka
+                  description: Char-grilled paneer with house spices.
+                  category: Starters
+                  price: '240.00'
+                  availability: true
+                  archived: true
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /customer/orders:
+    post:
+      tags: [Customer orders]
+      operationId: createCustomerOrder
+      summary: Create an order for the authenticated customer
+      description: >-
+        The server loads current food rows, validates availability, calculates exact totals,
+        stores snapshots, and creates the order and items atomically. Client pricing,
+        reference, status, and customer ownership fields are not accepted.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderRequest' }
+            example:
+              items:
+                - { foodId: seed-food-paneer, quantity: 2 }
+                - { foodId: seed-food-dal, quantity: 1 }
+              notes: Please make it less spicy
+      responses:
+        '201':
+          description: Created order with placement-time item snapshots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/CustomerOrder' }
+              example:
+                success: true
+                data:
+                  id: cord123
+                  reference: ORD-A1B2C3D4E5F60718293A4B5C
+                  status: PLACED
+                  notes: Please make it less spicy
+                  total: '760.00'
+                  items:
+                    - { foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }
+                    - { foodId: seed-food-dal, foodName: Dal Makhani, unitPrice: '280.00', quantity: 1, lineTotal: '280.00' }
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [Customer orders]
+      operationId: listCustomerOrders
+      summary: List orders belonging to the authenticated customer
+      description: Query parameters are not supported; ownership comes from the token.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Own order history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CustomerOrder' }
+              example:
+                success: true
+                data:
+                  - id: cord123
+                    reference: ORD-A1B2C3D4E5F60718293A4B5C
+                    status: PLACED
+                    notes: null
+                    total: '480.00'
+                    items: [{ foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }]
+                    createdAt: '2026-10-04T10:00:00.000Z'
+                    updatedAt: '2026-10-04T10:00:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /customer/orders/{id}:
+    get:
+      tags: [Customer orders]
+      operationId: getCustomerOrder
+      summary: Get an order owned by the authenticated customer
+      description: Another customer's order returns 404 to avoid revealing its existence.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Own order and immutable item snapshots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/CustomerOrder' }
+              example:
+                success: true
+                data:
+                  id: cord123
+                  reference: ORD-A1B2C3D4E5F60718293A4B5C
+                  status: PREPARING
+                  notes: null
+                  total: '480.00'
+                  items: [{ foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }]
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:10:00.000Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders:
+    get:
+      tags: [Staff orders]
+      operationId: listStaffOrders
+      summary: List all orders for staff
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+          example: PLACED
+      responses:
+        '200':
+          description: Staff order list with safe customer identity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/StaffOrder' }
+              example:
+                success: true
+                data:
+                  - id: cord123
+                    reference: ORD-A1B2C3D4E5F60718293A4B5C
+                    status: PLACED
+                    notes: null
+                    total: '480.00'
+                    items: [{ foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }]
+                    createdAt: '2026-10-04T10:00:00.000Z'
+                    updatedAt: '2026-10-04T10:00:00.000Z'
+                    customer: { id: seed-customer-1, name: Asha Customer, email: asha@example.com, role: CUSTOMER, active: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Staff orders]
+      operationId: getStaffOrder
+      summary: Get order detail for staff
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Order, snapshots, and safe customer fields.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/StaffOrder' }
+              example:
+                success: true
+                data:
+                  id: cord123
+                  reference: ORD-A1B2C3D4E5F60718293A4B5C
+                  status: PLACED
+                  notes: null
+                  total: '480.00'
+                  items: [{ foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }]
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:00:00.000Z'
+                  customer: { id: seed-customer-1, name: Asha Customer, email: asha@example.com, role: CUSTOMER, active: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders/{id}/notes:
+    patch:
+      tags: [Staff orders]
+      operationId: updateOrderNotes
+      summary: Update only the order notes
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderNotesRequest' }
+            example: { notes: Updated kitchen note }
+      responses:
+        '200':
+          description: Updated order with unchanged totals, status, and items.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/StaffOrder' }
+              example:
+                success: true
+                data:
+                  id: cord123
+                  reference: ORD-A1B2C3D4E5F60718293A4B5C
+                  status: PLACED
+                  notes: Updated kitchen note
+                  total: '480.00'
+                  items: [{ foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }]
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+                  customer: { id: seed-customer-1, name: Asha Customer, email: asha@example.com, role: CUSTOMER, active: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders/{id}/status:
+    patch:
+      tags: [Staff orders]
+      operationId: updateOrderStatus
+      summary: Process an order through an allowed transition
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderStatusRequest' }
+            example: { status: PREPARING }
+      responses:
+        '200':
+          description: Updated order status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/StaffOrder' }
+              example:
+                success: true
+                data:
+                  id: cord123
+                  reference: ORD-A1B2C3D4E5F60718293A4B5C
+                  status: PREPARING
+                  notes: null
+                  total: '480.00'
+                  items: [{ foodId: seed-food-paneer, foodName: Paneer Tikka, unitPrice: '240.00', quantity: 2, lineTotal: '480.00' }]
+                  createdAt: '2026-10-04T10:00:00.000Z'
+                  updatedAt: '2026-10-04T10:01:00.000Z'
+                  customer: { id: seed-customer-1, name: Asha Customer, email: asha@example.com, role: CUSTOMER, active: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      description: Project ID format; 1–64 ASCII letters, digits, underscores, or hyphens.
+      schema: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$' }
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success: { const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+      example: { success: false, error: { code: VALIDATION_ERROR, message: Request validation failed. } }
+    User:
+      type: object
+      required: [id, name, email, role, active, createdAt, updatedAt]
+      properties:
+        id: { type: string, example: seed-admin }
+        name: { type: string, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        role: { type: string, enum: [ADMIN, OPERATOR, CUSTOMER] }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Food:
+      type: object
+      required: [id, name, description, category, price, availability, archived, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string, maxLength: 160 }
+        description: { type: string }
+        category: { type: string, maxLength: 80 }
+        price: { type: string, pattern: '^\d{1,8}\.\d{2}$', example: '240.00' }
+        availability: { type: boolean }
+        archived: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CustomerFood:
+      type: object
+      required: [id, name, description, category, price]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        price: { type: string, pattern: '^\d{1,8}\.\d{2}$', example: '240.00' }
+    OrderStatus:
+      type: string
+      enum: [PLACED, PREPARING, COMPLETED, CANCELLED]
+    OrderItem:
+      type: object
+      required: [foodId, foodName, unitPrice, quantity, lineTotal]
+      properties:
+        foodId: { type: string }
+        foodName: { type: string, maxLength: 160 }
+        unitPrice: { type: string, pattern: '^\d{1,8}\.\d{2}$' }
+        quantity: { type: integer, minimum: 1 }
+        lineTotal: { type: string, pattern: '^\d{1,10}\.\d{2}$' }
+    CustomerOrder:
+      type: object
+      required: [id, reference, status, notes, total, items, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        reference: { type: string, maxLength: 32, example: ORD-A1B2C3D4E5F60718293A4B5C }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        notes: { type: [string, 'null'], maxLength: 1000 }
+        total: { type: string, pattern: '^\d{1,10}\.\d{2}$' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    StaffOrder:
+      allOf:
+        - $ref: '#/components/schemas/CustomerOrder'
+        - type: object
+          required: [customer]
+          properties:
+            customer:
+              type: object
+              required: [id, name, email, role, active]
+              properties:
+                id: { type: string }
+                name: { type: string }
+                email: { type: string, format: email }
+                role: { type: string, enum: [ADMIN, OPERATOR, CUSTOMER] }
+                active: { type: boolean }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254, example: admin@example.com }
+        password: { type: string, minLength: 1, maxLength: 72 }
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email, password, role]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 12, maxLength: 72 }
+        role: { type: string, enum: [ADMIN, OPERATOR] }
+        active: { type: boolean, default: true }
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        role: { type: string, enum: [ADMIN, OPERATOR] }
+        active: { type: boolean }
+    MoneyInput:
+      oneOf:
+        - type: string
+          description: Positive decimal money amount with at most two decimal places; leading zeroes are accepted and the API validates the DECIMAL(10,2) range.
+          pattern: '^(?=.*[1-9])0*\d{1,8}(\.\d{1,2})?$'
+          example: '249.00'
+        - type: number
+          exclusiveMinimum: 0
+          maximum: 99999999.99
+          multipleOf: 0.01
+    CreateFoodRequest:
+      type: object
+      additionalProperties: false
+      required: [name, description, category, price, availability]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, minLength: 1, maxLength: 10000 }
+        category: { type: string, minLength: 1, maxLength: 80 }
+        price: { $ref: '#/components/schemas/MoneyInput' }
+        availability: { type: boolean }
+    UpdateFoodRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, minLength: 1, maxLength: 10000 }
+        category: { type: string, minLength: 1, maxLength: 80 }
+        price: { $ref: '#/components/schemas/MoneyInput' }
+        availability: { type: boolean }
+    AvailabilityRequest:
+      type: object
+      additionalProperties: false
+      required: [availability]
+      properties:
+        availability: { type: boolean }
+    OrderItemRequest:
+      type: object
+      additionalProperties: false
+      required: [foodId, quantity]
+      properties:
+        foodId: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$' }
+        quantity: { type: integer, minimum: 1, maximum: 2147483647 }
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/OrderItemRequest' }
+        notes: { type: string, maxLength: 1000 }
+    OrderNotesRequest:
+      type: object
+      additionalProperties: false
+      required: [notes]
+      properties:
+        notes: { type: [string, 'null'], maxLength: 1000 }
+    OrderStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/OrderStatus' }
+  responses:
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { success: false, error: { code: VALIDATION_ERROR, message: Request validation failed. } }
+    Unauthenticated:
+      description: Missing, malformed, invalid, or expired bearer credentials.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { success: false, error: { code: UNAUTHENTICATED, message: Authentication is required. } }
+    Forbidden:
+      description: The authenticated user's role is not permitted.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { success: false, error: { code: FORBIDDEN, message: You do not have permission to access this resource. } }
+    NotFound:
+      description: Requested resource does not exist or is not visible to this customer.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          examples:
+            user:
+              summary: Staff user was not found
+              value: { success: false, error: { code: USER_NOT_FOUND, message: The requested staff user was not found. } }
+            food:
+              summary: Food was not found
+              value: { success: false, error: { code: FOOD_NOT_FOUND, message: The requested food was not found. } }
+            order:
+              summary: Order is missing or not owned by the customer
+              value: { success: false, error: { code: ORDER_NOT_FOUND, message: The requested order was not found. } }
+    Conflict:
+      description: Resource or business-rule conflict, such as an unavailable food or invalid order transition.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { success: false, error: { code: INVALID_ORDER_TRANSITION, message: Order cannot transition from COMPLETED to PREPARING. } }
+    InternalError:
+      description: Unexpected server error without implementation details.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { success: false, error: { code: INTERNAL_SERVER_ERROR, message: An unexpected error occurred. } }
